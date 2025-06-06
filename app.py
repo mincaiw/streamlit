@@ -196,7 +196,86 @@ def show_date_statistics(minwons: List[Minwon]):
     else:
         st.bar_chart(date_counts)
 
-# ====Google Sheets 조작작====
+# ====== 민원 표시/좋아요/상태변경 ======
+def display_minwon_instance(minwon_item: Minwon):
+    st.markdown(minwon_item.to_display_string())
+
+    like_count = minwon_item.like_count
+    button_label = f"👍 추천 ({like_count})"
+    if st.button(button_label, key=f"like_button_{minwon_item.id}"):
+        if GOOGLE_SHEETS_ENABLED:
+            success = increment_like_count_in_gsheet(minwon_item.id)
+            if success:
+                st.session_state.minwons_list = load_minwons_from_gsheet()
+                st.rerun()
+            else:
+                st.error("추천 수를 업데이트하는 데 실패했습니다.")
+        else:
+            st.warning("Google Sheets에 연결되지 않아 추천 수를 기록할 수 없습니다.")
+
+    if minwon_item.status != "처리완료":
+        if st.button("이 민원을 처리완료로 변경", key=f"solve_btn_{minwon_item.id}"):
+            if mark_minwon_as_solved_in_gsheet(minwon_item.id):
+                st.success("상태가 '처리완료'로 변경되었습니다!")
+                st.session_state.minwons_list = load_minwons_from_gsheet()
+                st.rerun()
+    st.markdown("---")
+
+def increment_like_count_in_gsheet(minwon_id: str) -> bool:
+    if not GOOGLE_SHEETS_ENABLED or SHEET is None:
+        return False
+    try:
+        all_rows_with_header = SHEET.get_all_values()
+        if not all_rows_with_header: return False
+
+        header = all_rows_with_header[0]
+        try:
+            id_col_index = header.index("ID")
+            like_col_index = header.index("Like Count")
+        except ValueError:
+            st.error("Google Sheet에서 'ID' 또는 'Like Count' 컬럼 헤더를 찾을 수 없습니다.")
+            return False
+
+        for idx, row in enumerate(all_rows_with_header[1:]):
+            current_row_index_in_sheet = idx + 2
+            if len(row) > id_col_index and row[id_col_index] == minwon_id:
+                current_likes = 0
+                if len(row) > like_col_index and row[like_col_index].isdigit():
+                    current_likes = int(row[like_col_index])
+                SHEET.update_cell(current_row_index_in_sheet, like_col_index + 1, current_likes + 1)
+                return True
+        st.warning(f"ID가 {minwon_id}인 민원을 Google Sheet에서 찾지 못했습니다.")
+        return False
+    except Exception as e:
+        st.error(f"Google Sheet에서 추천 수를 업데이트하는 중 오류 발생: {e}")
+        return False
+
+def mark_minwon_as_solved_in_gsheet(minwon_id: str) -> bool:
+    if not GOOGLE_SHEETS_ENABLED or SHEET is None:
+        return False
+    try:
+        all_rows_with_header = SHEET.get_all_values()
+        if not all_rows_with_header: return False
+        header = all_rows_with_header[0]
+        try:
+            id_col_index = header.index("ID")
+            status_col_index = header.index("Status")
+        except ValueError:
+            st.error("Google Sheet에서 'ID' 또는 'Status' 컬럼 헤더를 찾을 수 없습니다.")
+            return False
+
+        for idx, row in enumerate(all_rows_with_header[1:]):
+            current_row_index_in_sheet = idx + 2
+            if len(row) > id_col_index and row[id_col_index] == minwon_id:
+                SHEET.update_cell(current_row_index_in_sheet, status_col_index + 1, "처리완료")
+                return True
+        st.warning(f"ID가 {minwon_id}인 민원을 Google Sheet에서 찾지 못했습니다.")
+        return False
+    except Exception as e:
+        st.error(f"Google Sheet에서 상태를 업데이트하는 중 오류 발생: {e}")
+        return False
+    
+# ====Google Sheets 조작====
 def save_minwon_to_gsheet(minwon_item: Minwon):
     if not GOOGLE_SHEETS_ENABLED or SHEET is None:
         st.warning("Google Sheets에 연결되지 않아 저장할 수 없습니다.")
