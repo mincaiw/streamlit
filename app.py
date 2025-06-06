@@ -84,8 +84,20 @@ class Minwon:
     status: str = "미해결"
 
     def to_display_string(self) -> str:
-        # ...
-        pass
+        coord_str = f"({self.coordinates[0]:.5f}, {self.coordinates[1]:.5f})" if self.coordinates else "지정되지 않음"
+        author_str = self.author if self.author else "익명"
+        address_str = self.korean_address if self.korean_address else "제공되지 않음"
+        return f"""
+### {self.title}
+**상태:** {self.status}
+**민원 ID:** {self.id}
+**유형:** {self.category}
+**내용:** {self.content}
+**날짜:** {self.date.isoformat()}
+**주소:** {address_str}
+**좌표:** {coord_str}
+**제출자:** {author_str}
+        """
 
 # ====입력 필드====
 def get_minwon_title_input() -> str:
@@ -354,3 +366,172 @@ def load_minwons_from_gsheet() -> List[Minwon]:
         return []
     except Exception as e:
         st.error(f"Google Sheets에서 데이터를 불러오는 중 오류 발생: {e}")
+        
+#====main====
+def main():
+    # st.title("📝 민원 접수 및 조회 시스템") # set_page_config에서 이미 설정됨
+
+    if 'minwons_list' not in st.session_state: # 세션 상태 변수명 변경
+        if GOOGLE_SHEETS_ENABLED:
+            with st.spinner("Google Sheets에서 데이터를 불러오는 중..."): # 로딩 스피너 추가
+                st.session_state.minwons_list = load_minwons_from_gsheet()
+        else:
+            st.session_state.minwons_list = []
+    
+    # 지도 관련 세션 상태 초기화는 display_interactive_map 함수 내부에서 처리
+    if "map_center" not in st.session_state: st.session_state.map_center = INITIAL_MAP_CENTER
+    if "selected_map_coordinates" not in st.session_state: st.session_state.selected_map_coordinates = None
+    if "selected_korean_address" not in st.session_state: st.session_state.selected_korean_address = ""
+
+
+    st.sidebar.header("⚙️ 작업 메뉴") # 사이드바 헤더 변경
+    app_mode_options = {
+        "새 민원 제출": "submit_new", # "提交新民愿"
+        "전체 민원 보기": "view_all",   # "查看所有民愿"
+        "추천 순위 보기": "view_ranking", # "点赞排行榜"
+        "새로고침 (Google Sheets)": "refresh_gsheet" # "从Google Sheets加载/刷新"
+    }
+    selected_mode_korean = st.sidebar.selectbox(
+        "모드 선택:",
+        list(app_mode_options.keys()),
+        key="app_mode_selectbox"
+    )
+    app_mode = app_mode_options[selected_mode_korean]
+
+
+    if app_mode == "submit_new":
+        st.header("➕ 새 민원 제출")
+        
+        # 지도에서 위치 선택 및 주소 자동 변환
+        coords, auto_korean_address = display_interactive_map()
+        
+        st.subheader("2. 민원 상세 정보 입력")
+        title = get_minwon_title_input()
+        content = get_minwon_content_input()
+        category = get_minwon_category_input()
+        date = get_minwon_date_input()
+        author = get_minwon_author_input()
+        
+        # 주소 입력 필드: 자동 변환된 주소를 기본값으로 사용하고 수정 가능하도록 함
+        current_korean_address = st.text_input(
+            "주소 (지도에서 자동 인식 / 직접 수정 가능):", 
+            value=st.session_state.selected_korean_address, # 세션 상태에서 가져옴
+            key="korean_address_manual_input"
+        )
+
+        if st.button("민원 제출", key="submit_minwon_button", type="primary"):
+            final_selected_coords = st.session_state.selected_map_coordinates
+            
+            if not title: st.error("민원 제목을 입력해주세요!")
+            elif not content: st.error("민원 내용을 입력해주세요!")
+            elif not final_selected_coords: st.error("지도에서 민원 위치를 선택해주세요!")
+            else:
+                new_minwon = Minwon(
+                    title=title, content=content, date=date,
+                    korean_address=current_korean_address, # 사용자가 수정한 주소 사용
+                    coordinates=final_selected_coords, 
+                    author=author or "익명", # 익명 처리
+                    category=category,
+                    like_count=0 # 새로 제출 시 좋아요는 0
+                )
+                st.session_state.minwons_list.append(new_minwon)
+                if GOOGLE_SHEETS_ENABLED: save_minwon_to_gsheet(new_minwon)
+                else: st.info("Google Sheets에 연결되지 않아, 현재 세션에만 민원이 저장됩니다.")
+                
+                st.success("민원이 성공적으로 제출되었습니다!")
+                with st.expander("제출된 민원 정보 보기", expanded=True): # 제출 후 바로 보이도록
+                    display_minwon_instance(new_minwon)
+                
+                # 다음 제출을 위해 선택 사항 초기화
+                st.session_state.selected_map_coordinates = None
+                st.session_state.selected_korean_address = ""
+                st.session_state.map_center = INITIAL_MAP_CENTER
+                
+
+    elif app_mode == "view_all":
+        st.header("📜 전체 민원 목록")
+        
+        if not GOOGLE_SHEETS_ENABLED and not st.session_state.minwons_list:
+             st.warning("Google Sheets에 연결되지 않았고, 현재 세션에 민원 데이터가 없습니다. 민원을 먼저 제출하거나 Google Sheets 연결을 확인해주세요.")
+        
+        search_author_query = st.text_input("제출자 이름으로 검색 (일부 입력 가능):", key="author_search_input")
+        
+        minwons_to_display = st.session_state.minwons_list
+        
+        filtered_minwons = minwons_to_display
+        if search_author_query.strip():
+            filtered_minwons = [
+                mw for mw in minwons_to_display 
+                if mw.author and search_author_query.strip().lower() in mw.author.lower()
+            ]
+            st.info(f"'{search_author_query}'을(를) 포함하는 제출자의 민원 {len(filtered_minwons)}건이 검색되었습니다.")
+        
+        if not filtered_minwons:
+            if search_author_query.strip():
+                 st.info(f"'{search_author_query}'을(를) 포함하는 제출자의 민원 데이터가 없습니다.")
+            else:
+                 st.info("현재 등록된 민원 데이터가 없습니다.")
+        else:
+            # 정렬 옵션
+            sort_key_options = {"최신순": "date", "추천순": "like_count"}
+            selected_sort_key_korean = st.selectbox("정렬 기준:", list(sort_key_options.keys()))
+            sort_by = sort_key_options[selected_sort_key_korean]
+
+            reverse_sort = True # 최신순, 추천순 모두 내림차순
+            
+            sorted_minwons = sorted(
+                filtered_minwons, 
+                key=lambda mw: getattr(mw, sort_by, 0 if sort_by == "like_count" else datetime.date.min), 
+                reverse=reverse_sort
+            )
+
+            for mw_item in sorted_minwons:
+                display_minwon_instance(mw_item)
+            
+            with st.expander("지도에서 전체 민원 보기", expanded=False):
+                display_overview_map(filtered_minwons)
+            with st.expander("유형별 통계 보기", expanded=False):
+                show_category_statistics(filtered_minwons)
+            with st.expander("날짜별 통계 보기", expanded=False):
+                show_date_statistics(filtered_minwons)
+    
+    elif app_mode == "view_ranking": # 점수 순위 보기
+        st.header("👍 추천 순위 보기")
+        if not st.session_state.minwons_list:
+            st.info("표시할 민원 데이터가 없습니다.")
+        else:
+            # like_count 기준으로 내림차순 정렬
+            minwons_sorted_by_likes = sorted(
+                st.session_state.minwons_list, 
+                key=lambda mw: mw.like_count, 
+                reverse=True
+            )
+            
+            for rank, mw in enumerate(minwons_sorted_by_likes):
+                col1, col2 = st.columns([4,1])
+                with col1:
+                    st.markdown(f"**{rank+1}위. {mw.title}** (추천: {mw.like_count})")
+                    st.caption(f"카테고리: {mw.category} | 작성자: {mw.author or '익명'} | 날짜: {mw.date}")
+                with col2:
+                    if st.button("상세보기", key=f"rank_detail_btn_{mw.id}"):
+                        # 상세보기를 누르면 해당 민원의 전체 정보를 표시 (새로운 expander나 modal 방식 고려 가능)
+                        with st.expander(f"{mw.title} - 상세 정보", expanded=True):
+                            display_minwon_instance(mw) # 기존 함수 재활용
+                st.markdown("---")
+
+
+    elif app_mode == "refresh_gsheet":
+        st.header("📥 Google Sheets에서 데이터 새로고침")
+        if not GOOGLE_SHEETS_ENABLED:
+            st.error("Google Sheets에 연결되지 않아 데이터를 불러올 수 없습니다. token.json 파일과 인터넷 연결을 확인해주세요.")
+        elif st.button("새로고침 시작", key="force_reload_gsheet_button"):
+            with st.spinner("Google Sheets에서 최신 데이터를 불러오는 중..."):
+                st.session_state.minwons_list = load_minwons_from_gsheet()
+            st.success(f"Google Sheets에서 데이터를 성공적으로 새로고침했습니다. 현재 총 {len(st.session_state.minwons_list)}건의 민원이 있습니다.")
+            # 데이터를 표시할 필요는 없으므로 rerun 하지 않거나, 사용자가 다른 뷰로 이동하도록 유도
+            
+    st.sidebar.markdown("---")
+    st.sidebar.info(f"현재 세션에 {len(st.session_state.minwons_list)}건의 민원이 있습니다.")
+
+if __name__ == "__main__":
+    main()
