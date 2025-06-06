@@ -142,7 +142,61 @@ def display_interactive_map():
 
     return st.session_state.selected_map_coordinates, st.session_state.selected_korean_address
 
-# ====== Google Sheets操作 ======
+def display_overview_map(minwons: List[Minwon]):
+    st.subheader("🗺️ 전체 민원 위치 보기 (유형별 그룹)")
+    map_view = folium.Map(location=INITIAL_MAP_CENTER, zoom_start=INITIAL_MAP_ZOOM)
+    marker_cluster = MarkerCluster().add_to(map_view)
+
+    points_added = 0
+    for mw in minwons:
+        if mw.coordinates:
+            popup_text = f"<b>{mw.title}</b><br>유형: {mw.category}<br>내용: {mw.content[:30]}..."
+            folium.Marker(
+                location=mw.coordinates,
+                popup=folium.Popup(popup_text, max_width=300),
+                tooltip=mw.title,
+                icon=folium.Icon(color=category_colors.get(mw.category, "lightgray"))
+            ).add_to(marker_cluster)
+            points_added +=1
+
+    if points_added > 0:
+        st_folium(map_view, width=700, height=500, key="overview_map")
+    else:
+        st.info("지도에 표시할 좌표가 있는 민원이 없습니다.")
+
+#====유형/날짜별 시각화====
+def show_category_statistics(minwons: List[Minwon]):
+    st.subheader("📊 민원 유형별 통계")
+    if minwons:
+        df = pd.DataFrame([{"유형": mw.category} for mw in minwons])
+        category_counts = df["유형"].value_counts()
+        if not category_counts.empty:
+            st.bar_chart(category_counts)
+        else:
+            st.info("통계에 사용할 민원 데이터가 없습니다.")
+    else:
+        st.info("민원 데이터가 없어 유형별 통계를 표시할 수 없습니다.")
+
+def show_date_statistics(minwons: List[Minwon]):
+    st.subheader("📅 날짜별 민원 제출 현황")
+    if not minwons:
+        st.info("민원 데이터가 없어 날짜별 통계를 표시할 수 없습니다.")
+        return
+
+    dates = [mw.date for mw in minwons if mw.date]
+    if not dates:
+        st.info("민원 데이터에 유효한 날짜 정보가 없어 통계를 표시할 수 없습니다.")
+        return
+
+    df = pd.DataFrame({"날짜": dates})
+    df["날짜"] = pd.to_datetime(df["날짜"])
+    date_counts = df["날짜"].dt.date.value_counts().sort_index()
+    if date_counts.empty:
+        st.info("날짜별 제출 현황을 집계할 수 없습니다.")
+    else:
+        st.bar_chart(date_counts)
+
+# ====Google Sheets 조작작====
 def save_minwon_to_gsheet(minwon_item: Minwon):
     if not GOOGLE_SHEETS_ENABLED or SHEET is None:
         st.warning("Google Sheets에 연결되지 않아 저장할 수 없습니다.")
