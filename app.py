@@ -19,7 +19,25 @@ class Minwon:
     def to_display_string(self) -> str:
         # ...
         pass
+
+# ====입력 필드====
+def get_minwon_title_input() -> str:
+    return st.text_input("민원 제목:", key="minwon_title_input", placeholder="민원의 주요 내용을 간략하게 입력해주세요.")
+
+def get_minwon_content_input() -> str:
+    return st.text_area("민원 내용:", height=150, key="minwon_content_input", placeholder="상세한 민원 내용을 작성해주세요.")
+
+def get_minwon_category_input() -> str:
+    categories = ["교통 불편", "환경 문제", "시설 개선", "안전 문제", "기타 건의"]
+    return st.selectbox("민원 유형:", categories, key="minwon_category_input")
+
+def get_minwon_date_input() -> datetime.date:
+    return st.date_input("날짜 선택:", value=datetime.date.today(), key="minwon_date_input")
+
+def get_minwon_author_input() -> str:
+    return st.text_input("제출자 이름 (선택 사항):", key="minwon_author_input", placeholder="이름을 남겨주세요.")
     
+#====지도====   
 def display_interactive_map():
     st.subheader("1. 지도에서 민원 위치 선택")
     if "map_center" not in st.session_state:
