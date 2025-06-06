@@ -116,7 +116,9 @@ def get_minwon_date_input() -> datetime.date:
 def get_minwon_author_input() -> str:
     return st.text_input("제출자 이름 (선택 사항):", key="minwon_author_input", placeholder="이름을 남겨주세요.")
     
-#====지도====   
+#====지도====
+INITIAL_MAP_CENTER = [37.5665, 126.9780]
+INITIAL_MAP_ZOOM = 12   
 def display_interactive_map():
     st.subheader("1. 지도에서 민원 위치 선택")
     if "map_center" not in st.session_state:
@@ -366,7 +368,7 @@ def load_minwons_from_gsheet() -> List[Minwon]:
         return []
     except Exception as e:
         st.error(f"Google Sheets에서 데이터를 불러오는 중 오류 발생: {e}")
-        
+
 #====main====
 def main():
     # st.title("📝 민원 접수 및 조회 시스템") # set_page_config에서 이미 설정됨
