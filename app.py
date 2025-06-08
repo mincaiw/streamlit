@@ -13,8 +13,12 @@ from oauth2client.service_account import ServiceAccountCredentials
 import ast
 import requests
 from folium.plugins import MarkerCluster
+import matplotlib.pyplot as plt
+import matplotlib
 
-
+#==== 한국어 설정 ====
+plt.rcParams['font.family'] = 'Malgun Gothic'  
+plt.rcParams['axes.unicode_minus'] = False    
 # ====== Kakao API설치====
 KAKAO_API_KEY = "a34b932ea6ee81a3d6634de738ef60f3"
 
