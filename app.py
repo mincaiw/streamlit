@@ -14,8 +14,9 @@ import ast
 import requests
 from folium.plugins import MarkerCluster
 
+
 # ====== Kakao API설치====
-KAKAO_API_KEY = "72a8d42e1f121df307e0deb0f132ff66"
+KAKAO_API_KEY = "a34b932ea6ee81a3d6634de738ef60f3"
 
 def get_address_from_coords(lat, lon):
     url = "https://dapi.kakao.com/v2/local/geo/coord2address.json"
@@ -118,7 +119,16 @@ def get_minwon_author_input() -> str:
     
 #====지도====
 INITIAL_MAP_CENTER = [37.5665, 126.9780]
-INITIAL_MAP_ZOOM = 12   
+INITIAL_MAP_ZOOM = 12
+category_colors = {
+    "교통 불편": "red",
+    "환경 문제": "green",
+    "시설 개선": "blue",
+    "안전 문제": "orange",
+    "기타 건의": "gray"
+}
+
+
 def display_interactive_map():
     st.subheader("1. 지도에서 민원 위치 선택")
     if "map_center" not in st.session_state:
@@ -452,13 +462,20 @@ def main():
 
     elif app_mode == "view_all":
         st.header("📜 전체 민원 목록")
+        filter_status = st.radio(
+        "상태별 보기", 
+        options=["전체", "미해결", "처리완료"],
+        horizontal=True
+        )
+        minwons_to_display = st.session_state.minwons_list
         
+        if filter_status != "전체":
+            minwons_to_display = [mw for mw in minwons_to_display if mw.status == filter_status]
+
         if not GOOGLE_SHEETS_ENABLED and not st.session_state.minwons_list:
              st.warning("Google Sheets에 연결되지 않았고, 현재 세션에 민원 데이터가 없습니다. 민원을 먼저 제출하거나 Google Sheets 연결을 확인해주세요.")
         
         search_author_query = st.text_input("제출자 이름으로 검색 (일부 입력 가능):", key="author_search_input")
-        
-        minwons_to_display = st.session_state.minwons_list
         
         filtered_minwons = minwons_to_display
         if search_author_query.strip():
