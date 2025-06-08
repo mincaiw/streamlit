@@ -195,7 +195,14 @@ def show_category_statistics(minwons: List[Minwon]):
         df = pd.DataFrame([{"유형": mw.category} for mw in minwons])
         category_counts = df["유형"].value_counts()
         if not category_counts.empty:
-            st.bar_chart(category_counts)
+            st.pyplot(
+                category_counts.plot.pie(
+                    autopct='%1.1f%%', 
+                    figsize=(6, 4), 
+                    ylabel='', 
+                    legend=False
+                ).get_figure()
+            )
         else:
             st.info("통계에 사용할 민원 데이터가 없습니다.")
     else:
@@ -214,7 +221,8 @@ def show_date_statistics(minwons: List[Minwon]):
 
     df = pd.DataFrame({"날짜": dates})
     df["날짜"] = pd.to_datetime(df["날짜"])
-    date_counts = df["날짜"].dt.date.value_counts().sort_index()
+
+    date_counts = df["날짜"].dt.strftime("%Y-%m-%d").value_counts().sort_index()
     if date_counts.empty:
         st.info("날짜별 제출 현황을 집계할 수 없습니다.")
     else:
